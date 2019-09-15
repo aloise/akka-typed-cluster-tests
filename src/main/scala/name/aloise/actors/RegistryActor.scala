@@ -38,13 +38,14 @@ object RegistryActor {
     context.system.receptionist ! Receptionist.Subscribe(BatteryActor.GetBatteryStatsKey, listingAdapter)
 
     Behaviors.receive {
-      case (_, DeliverEnergyRequest(to, id, amount)) =>
+      case (ctx, DeliverEnergyRequest(to, id, amount)) =>
         val newRequests = requests.updatedWith(id) {
           case None => Some(EnergyRequest(to, id, amount, 0L))
           case Some(existing) => Some(existing.copy(requestedAmount = existing.requestedAmount + amount))
         }
 
         // SEND Stats request here for every battery except for the source of this request
+        batteries.foreach(_ ! GetBatteryStats(ctx.self))
         main(name, batteries, newRequests, transactionLog)
 
       case (_, BatteryStatsReport(from, batteryId, stats, _)) =>

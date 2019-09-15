@@ -1,7 +1,7 @@
 import Settings.Version
 
 name := "akka-typed-cluster-example"
-version := "0.1"
+version := "0.2"
 scalaVersion := "2.13.0"
 
 libraryDependencies ++= Seq(
