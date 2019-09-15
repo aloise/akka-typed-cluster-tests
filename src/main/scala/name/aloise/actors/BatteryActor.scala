@@ -1,5 +1,6 @@
 package name.aloise.actors
 
+import akka.actor.typed.receptionist.{Receptionist, ServiceKey}
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import javax.crypto.Mac
@@ -64,7 +65,12 @@ final case class FailReason(batteryId: DeviceId, reason: String) extends FailRea
 
 object BatteryActor {
 
-  def functioningBattery(myId: DeviceId, stats: BatteryStats): Behavior[FunctioningBatteryState] =
+  val GetBatteryStatsKey: ServiceKey[FunctioningBatteryState] = ServiceKey[FunctioningBatteryState]("batteryNode")
+
+  def functioningBattery(myId: DeviceId, stats: BatteryStats): Behavior[FunctioningBatteryState] = Behaviors.setup { ctx =>
+
+    ctx.system.receptionist ! Receptionist.Register(GetBatteryStatsKey, ctx.self)
+
     Behaviors.receive {
       case (ctx, GetBatteryStats(to)) =>
         replyWithStats(to)(ctx.self, myId, stats)
@@ -90,6 +96,7 @@ object BatteryActor {
         functioningBattery(myId, stats.copy(currentCapacity = Math.max(0, stats.currentCapacity - amt)))
 
     }
+  }
 
   def failedBattery(myId: DeviceId, reason: String): Behavior[FailedBatteryState] = Behaviors.receive {
     case (_, GetFailReason(to)) =>

@@ -2,6 +2,7 @@ package name.aloise.actors
 
 import java.time.LocalDateTime
 
+import akka.actor.typed.receptionist.Receptionist
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 
@@ -21,20 +22,41 @@ object RegistryActor {
    */
   final case class BatteryStatsReport(from: ActorRef[FunctioningBatteryState], batteryId: DeviceId, stats: BatteryStats, hmac: String) extends RegistryMessage
 
+  final case class BatteryDeviceJoined(listing: Receptionist.Listing) extends RegistryMessage
 
-  def main(name: String, requests: Map[DeviceId, EnergyRequest] = Map.empty, transactionLog: List[EnergyTransfer] = Nil): Behavior[RegistryMessage] = Behaviors.receive {
-    case (_, DeliverEnergyRequest(to, id, amount)) =>
-      val newRequests = requests.updatedWith(id) {
-        case None => Some(EnergyRequest(to, id, amount, 0L))
-        case Some(existing) => Some(existing.copy(requestedAmount = existing.requestedAmount + amount))
-      }
+  def main(
+            name: String,
+            batteries: Set[ActorRef[FunctioningBatteryState]] = Set.empty,
+            requests: Map[DeviceId, EnergyRequest] = Map.empty,
+            transactionLog: List[EnergyTransfer] = Nil
+          ): Behavior[RegistryMessage] = Behaviors.setup { context =>
 
-      // SEND Stats request here for every battery except for the source of this request
-      main(name, newRequests, transactionLog)
+    // subscribe to the processor reference updates we're interested in
+    val listingAdapter: ActorRef[Receptionist.Listing] = context.messageAdapter { listing =>
+      BatteryDeviceJoined(listing)
+    }
+    context.system.receptionist ! Receptionist.Subscribe(BatteryActor.GetBatteryStatsKey, listingAdapter)
 
-    case (_, BatteryStatsReport(from, batteryId, stats, _)) =>
-      Behaviors.same
+    Behaviors.receive {
+      case (_, DeliverEnergyRequest(to, id, amount)) =>
+        val newRequests = requests.updatedWith(id) {
+          case None => Some(EnergyRequest(to, id, amount, 0L))
+          case Some(existing) => Some(existing.copy(requestedAmount = existing.requestedAmount + amount))
+        }
 
+        // SEND Stats request here for every battery except for the source of this request
+        main(name, batteries, newRequests, transactionLog)
+
+      case (_, BatteryStatsReport(from, batteryId, stats, _)) =>
+        Behaviors.same
+
+      case (_, BatteryDeviceJoined(BatteryActor.GetBatteryStatsKey.Listing(listings))) =>
+        main(name, listings, requests, transactionLog)
+
+    }
   }
+
+
+
 
 }

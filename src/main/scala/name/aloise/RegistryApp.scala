@@ -6,11 +6,11 @@ import name.aloise.actors.RegistryActor.RegistryMessage
 
 import scala.io.StdIn
 
-object Main extends App {
+object RegistryApp extends App {
 
-  val system: ActorSystem[RegistryMessage] = ActorSystem(RegistryActor.main("Main"), "default")
+  val system: ActorSystem[RegistryMessage] = ActorSystem(RegistryActor.main("Registry"), "default")
 
-  Console.println("Running the cluster node ...")
+  Console.println("Running the Registry cluster node ...")
   Console.println("Press <enter> to stop")
 
   StdIn.readLine()
