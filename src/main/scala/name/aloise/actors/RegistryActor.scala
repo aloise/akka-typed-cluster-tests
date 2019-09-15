@@ -99,7 +99,7 @@ object RegistryActor {
         // Sending deliver messages for all requested transfers
         energyTransfers.foreach { case (et, to) =>
           ctx.log.info("Delivering {}J of Energy from {} to {}", et.amount, et.from, et.to)
-          from ! Deliver(to, et.amount)
+          from ! Deliver(to, et.to, et.amount)
         }
 
         if (energyTransfers.nonEmpty) {

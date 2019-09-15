@@ -34,7 +34,7 @@ final case class GetBatteryStats(replyTo: ActorRef[RegistryMessage]) extends Fun
  * @param to     Receiver
  * @param amount Amount of energy in Joules
  */
-final case class Deliver(to: ActorRef[FunctioningBatteryState], amount: Long) extends FunctioningBatteryState
+final case class Deliver(to: ActorRef[FunctioningBatteryState], toId: DeviceId, amount: Long) extends FunctioningBatteryState
 
 /**
  * Receive the particular amount of energy from the grid
@@ -42,7 +42,7 @@ final case class Deliver(to: ActorRef[FunctioningBatteryState], amount: Long) ex
  * @param from   Sender
  * @param amount Amount of energy in Joules
  */
-final case class Receive(from: ActorRef[FunctioningBatteryState], amount: Long) extends FunctioningBatteryState
+final case class Receive(from: ActorRef[FunctioningBatteryState], fromId: DeviceId, amount: Long) extends FunctioningBatteryState
 
 /**
  * The amount of energy the battery accepted from the local generator (solar panels)
@@ -75,17 +75,19 @@ object BatteryActor {
       case (ctx, GetBatteryStats(to)) =>
         replyWithStats(to)(ctx.self, myId, stats)
 
-      case (ctx, Deliver(to, amt)) =>
+      case (ctx, Deliver(to, toId, amt)) =>
         val newAmount = Math.max(0, stats.currentCapacity - amt)
         val amtToDeliver = amt - newAmount
         if (amtToDeliver > 0) {
-          to ! Receive(ctx.self, amtToDeliver)
+          to ! Receive(ctx.self, myId, amtToDeliver)
+          ctx.log.info("Delivering {}J to {}", amtToDeliver, toId)
           functioningBattery(registry, myId, stats.copy(currentCapacity = newAmount))
         } else {
           Behavior.same
         }
 
-      case (_, Receive(_, amount)) =>
+      case (ctx, Receive(_, fromId, amount)) =>
+        ctx.log.info("Received {}J from {}", amount, fromId)
         val newAmount = Math.min(stats.maxCapacity, stats.currentCapacity + amount)
         functioningBattery(registry, myId, stats.copy(currentCapacity = newAmount))
 
@@ -96,7 +98,7 @@ object BatteryActor {
 
       case (ctx, Discharge(amt)) =>
         val newCapacity = Math.max(0, stats.currentCapacity - amt)
-        ctx.log.info("Discharged {} down from {}J to {}J of {}J max", myId, stats.currentCapacity, newCapacity, stats.maxCapacity)
+        ctx.log.info("Requested {} to deliver {}J - battery capacity is {}J of {}J max", myId, amt, stats.currentCapacity, stats.maxCapacity)
         if(amt > stats.currentCapacity) {
           // lacking energy - requesting it from the registry
           registry ! DeliverEnergyRequest(ctx.self, myId, amt - stats.currentCapacity)
