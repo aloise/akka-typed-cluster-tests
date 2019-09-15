@@ -61,13 +61,14 @@ object RegistryActor {
 
     Behaviors.receive {
       case (ctx, DeliverEnergyRequest(to, id, amount)) =>
-        val newRequests = EnergyRequest(to, id, amount, 0L) :: requests
+        ctx.log.info("Battery {} requested {}J", id, amount)
+        val newRequests = EnergyRequest(to, id, amount) :: requests
 
         // SEND Stats request here for every battery except for the source of this request
         batteries.filter(_ != to).foreach(_ ! GetBatteryStats(ctx.self))
         main(name, batteries, newRequests, transactionLog)
 
-      case (_, BatteryStatsReport(from, fromBatteryId, stats, _)) =>
+      case (ctx, BatteryStatsReport(from, fromBatteryId, stats, _)) =>
 
         // trying to find the first request in the queue to serve from the oldest one to a newest
         val (energyTransfers, updatedRequests, _) =
@@ -97,6 +98,7 @@ object RegistryActor {
 
         // Sending deliver messages for all requested transfers
         energyTransfers.foreach { case (et, to) =>
+          ctx.log.info("Delivering {}J of Energy from {} to {}", et.amount, et.from, et.to)
           from ! Deliver(to, et.amount)
         }
 
