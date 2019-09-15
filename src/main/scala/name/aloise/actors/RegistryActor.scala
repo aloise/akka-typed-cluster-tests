@@ -22,6 +22,8 @@ object RegistryActor {
    */
   final case class BatteryStatsReport(from: ActorRef[FunctioningBatteryState], batteryId: DeviceId, stats: BatteryStats, hmac: String) extends RegistryMessage
 
+  final case class AddBattery(id: DeviceId, stats: BatteryStats) extends RegistryMessage
+
   final case class BatteryDeviceJoined(listing: Receptionist.Listing) extends RegistryMessage
 
   def main(
@@ -53,6 +55,11 @@ object RegistryActor {
 
       case (_, BatteryDeviceJoined(BatteryActor.GetBatteryStatsKey.Listing(listings))) =>
         main(name, listings, requests, transactionLog)
+
+      case (ctx, AddBattery(id, stats)) =>
+        ctx.log.info("Creating a Battery {} with capacity {}J of {}J", id, stats.currentCapacity, stats.maxCapacity)
+        ctx.spawn(BatteryActor.functioningBattery(id, stats), name = "Battery-" + id.id.toString)
+        Behaviors.same
 
     }
   }
