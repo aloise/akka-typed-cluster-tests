@@ -4,6 +4,7 @@ import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
+import name.aloise.actors.RegistryActor.{BatteryStatsReport, RegistryMessage}
 
 /**
  * Battery Stats. TODO - might be improved with Spire and Refined Types (>= 0)
@@ -15,8 +16,6 @@ case class BatteryStats(currentCapacity: Long, maxCapacity: Long)
 
 sealed trait Message
 
-sealed trait ControllerMessage
-
 sealed trait BatteryMessage extends Message
 
 trait FunctioningBatteryState extends BatteryMessage
@@ -26,16 +25,7 @@ trait FailedBatteryState extends BatteryMessage
 trait FailReasonLogger extends Message
 
 
-final case class GetBatteryStats(replyTo: ActorRef[ControllerMessage]) extends FunctioningBatteryState
-
-/**
- * Battery Stats response
- *
- * @param batteryId UUID of the battery (from the factory)
- * @param stats     - Battery Stats
- * @param hmac      String - UUID and capacity (hardware-backed HMAC)
- */
-final case class BatteryStatsReport(batteryId: DeviceId, stats: BatteryStats, hmac: String) extends ControllerMessage
+final case class GetBatteryStats(replyTo: ActorRef[RegistryMessage]) extends FunctioningBatteryState
 
 /**
  * Send the particular amount of energy to the grid
@@ -76,7 +66,9 @@ object BatteryActor {
 
   def functioningBattery(myId: DeviceId, stats: BatteryStats): Behavior[FunctioningBatteryState] =
     Behaviors.receive {
-      case (_, GetBatteryStats(to)) => replyWithStats(to)(myId, stats)
+      case (ctx, GetBatteryStats(to)) =>
+        replyWithStats(to)(ctx.self, myId, stats)
+
       case (ctx, Deliver(to, amt)) =>
         val newAmount = Math.max(0, stats.currentCapacity - amt)
         val amtToDeliver = amt - newAmount
@@ -86,6 +78,7 @@ object BatteryActor {
         } else {
           Behavior.same
         }
+
       case (_, Receive(_, amount)) =>
         val newAmount = Math.min(stats.maxCapacity, stats.currentCapacity + amount)
         functioningBattery(myId, stats.copy(currentCapacity = newAmount))
@@ -105,8 +98,8 @@ object BatteryActor {
   }
 
 
-  protected def replyWithStats[T](to: ActorRef[ControllerMessage])(myId: DeviceId, stats: BatteryStats): Behavior[T] = {
-    to ! BatteryStatsReport(myId, stats, hmac(myId.toString + stats.toString))
+  protected def replyWithStats[T](to: ActorRef[RegistryMessage])(self: ActorRef[FunctioningBatteryState], myId: DeviceId, stats: BatteryStats): Behavior[T] = {
+    to ! BatteryStatsReport(self, myId, stats, hmac(myId.toString + stats.toString))
     Behaviors.same[T]
   }
 
