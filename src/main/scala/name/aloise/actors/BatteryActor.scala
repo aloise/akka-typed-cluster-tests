@@ -5,7 +5,7 @@ import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
-import name.aloise.actors.RegistryActor.{BatteryStatsReport, RegistryMessage}
+import name.aloise.actors.RegistryActor.{BatteryStatsReport, DeliverEnergyRequest, RegistryMessage}
 
 /**
  * Battery Stats. TODO - might be improved with Spire and Refined Types (>= 0)
@@ -67,7 +67,7 @@ object BatteryActor {
 
   val GetBatteryStatsKey: ServiceKey[FunctioningBatteryState] = ServiceKey[FunctioningBatteryState]("batteryNode")
 
-  def functioningBattery(myId: DeviceId, stats: BatteryStats): Behavior[FunctioningBatteryState] = Behaviors.setup { ctx =>
+  def functioningBattery(registry: ActorRef[RegistryMessage], myId: DeviceId, stats: BatteryStats): Behavior[FunctioningBatteryState] = Behaviors.setup { ctx =>
 
     ctx.system.receptionist ! Receptionist.Register(GetBatteryStatsKey, ctx.self)
 
@@ -80,20 +80,28 @@ object BatteryActor {
         val amtToDeliver = amt - newAmount
         if (amtToDeliver > 0) {
           to ! Receive(ctx.self, amtToDeliver)
-          functioningBattery(myId, stats.copy(currentCapacity = newAmount))
+          functioningBattery(registry, myId, stats.copy(currentCapacity = newAmount))
         } else {
           Behavior.same
         }
 
       case (_, Receive(_, amount)) =>
         val newAmount = Math.min(stats.maxCapacity, stats.currentCapacity + amount)
-        functioningBattery(myId, stats.copy(currentCapacity = newAmount))
+        functioningBattery(registry, myId, stats.copy(currentCapacity = newAmount))
 
-      case (_, Charge(amt)) =>
-        functioningBattery(myId, stats.copy(currentCapacity = Math.min(stats.maxCapacity, stats.currentCapacity + amt)))
+      case (ctx, Charge(amt)) =>
+        val newCapacity = Math.min(stats.maxCapacity, stats.currentCapacity + amt)
+        ctx.log.info("Charged {} up from {}J to {}J of {}J max", myId, stats.currentCapacity, newCapacity, stats.maxCapacity)
+        functioningBattery(registry, myId, stats.copy(currentCapacity = newCapacity))
 
-      case (_, Discharge(amt)) =>
-        functioningBattery(myId, stats.copy(currentCapacity = Math.max(0, stats.currentCapacity - amt)))
+      case (ctx, Discharge(amt)) =>
+        val newCapacity = Math.max(0, stats.currentCapacity - amt)
+        ctx.log.info("Discharged {} down from {}J to {}J of {}J max", myId, stats.currentCapacity, newCapacity, stats.maxCapacity)
+        if(amt > stats.currentCapacity) {
+          // lacking energy - requesting it from the registry
+          registry ! DeliverEnergyRequest(ctx.self, myId, amt - stats.currentCapacity)
+        }
+        functioningBattery(registry, myId, stats.copy(currentCapacity = newCapacity))
 
     }
   }

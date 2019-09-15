@@ -9,7 +9,8 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-cluster-typed" % Version.akka,
   "com.typesafe.akka" %% "akka-slf4j" % Version.akka,
   "com.typesafe.akka" %% "akka-distributed-data" % Version.akka,
-  "ch.qos.logback" % "logback-classic" % "1.2.3"
+  "ch.qos.logback" % "logback-classic" % "1.2.3",
+  "com.typesafe.akka" %% "akka-actor-testkit-typed" % Version.akka % Test
 )
 // Workaround - https://github.com/sbt/sbt/issues/5075
 classLoaderLayeringStrategy := ClassLoaderLayeringStrategy.AllLibraryJars
