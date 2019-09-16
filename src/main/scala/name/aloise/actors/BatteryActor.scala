@@ -67,45 +67,42 @@ object BatteryActor {
 
   val GetBatteryStatsKey: ServiceKey[FunctioningBatteryState] = ServiceKey[FunctioningBatteryState]("batteryNode")
 
-  def functioningBattery(registry: ActorRef[RegistryMessage], myId: DeviceId, stats: BatteryStats): Behavior[FunctioningBatteryState] = Behaviors.setup { ctx =>
+  // Behaviors.setup { ctx => ctx.system.receptionist ! Receptionist.Register(GetBatteryStatsKey, ctx.self)
 
-    ctx.system.receptionist ! Receptionist.Register(GetBatteryStatsKey, ctx.self)
+  def functioningBattery(registry: ActorRef[RegistryMessage], myId: DeviceId, stats: BatteryStats): Behavior[FunctioningBatteryState] = Behaviors.receive {
+    case (ctx, GetBatteryStats(to)) =>
+      replyWithStats(to)(ctx.self, myId, stats)
 
-    Behaviors.receive {
-      case (ctx, GetBatteryStats(to)) =>
-        replyWithStats(to)(ctx.self, myId, stats)
-
-      case (ctx, Deliver(to, toId, amt)) =>
-        val newAmount = Math.max(0, stats.currentCapacity - amt)
-        val amtToDeliver = amt - newAmount
-        if (amtToDeliver > 0) {
-          to ! Receive(ctx.self, myId, amtToDeliver)
-          ctx.log.info("Delivering {}J to {}", amtToDeliver, toId)
-          functioningBattery(registry, myId, stats.copy(currentCapacity = newAmount))
-        } else {
-          Behavior.same
-        }
-
-      case (ctx, Receive(_, fromId, amount)) =>
-        ctx.log.info("Received {}J from {}", amount, fromId)
-        val newAmount = Math.min(stats.maxCapacity, stats.currentCapacity + amount)
+    case (ctx, Deliver(to, toId, amt)) =>
+      val newAmount = Math.max(0, stats.currentCapacity - amt)
+      val amtToDeliver = amt - newAmount
+      if (amtToDeliver > 0) {
+        to ! Receive(ctx.self, myId, amtToDeliver)
+        ctx.log.info("Delivering {}J to {}", amtToDeliver, toId)
         functioningBattery(registry, myId, stats.copy(currentCapacity = newAmount))
+      } else {
+        Behavior.same
+      }
 
-      case (ctx, Charge(amt)) =>
-        val newCapacity = Math.min(stats.maxCapacity, stats.currentCapacity + amt)
-        ctx.log.info("Charged {} up from {}J to {}J of {}J max", myId, stats.currentCapacity, newCapacity, stats.maxCapacity)
-        functioningBattery(registry, myId, stats.copy(currentCapacity = newCapacity))
+    case (ctx, Receive(_, fromId, amount)) =>
+      ctx.log.info("Received {}J from {}", amount, fromId)
+      val newAmount = Math.min(stats.maxCapacity, stats.currentCapacity + amount)
+      functioningBattery(registry, myId, stats.copy(currentCapacity = newAmount))
 
-      case (ctx, Discharge(amt)) =>
-        val newCapacity = Math.max(0, stats.currentCapacity - amt)
-        ctx.log.info("Requested {} to deliver {}J - battery capacity is {}J of {}J max", myId, amt, stats.currentCapacity, stats.maxCapacity)
-        if(amt > stats.currentCapacity) {
-          // lacking energy - requesting it from the registry
-          registry ! DeliverEnergyRequest(ctx.self, myId, amt - stats.currentCapacity)
-        }
-        functioningBattery(registry, myId, stats.copy(currentCapacity = newCapacity))
+    case (ctx, Charge(amt)) =>
+      val newCapacity = Math.min(stats.maxCapacity, stats.currentCapacity + amt)
+      ctx.log.info("Charged {} up from {}J to {}J of {}J max", myId, stats.currentCapacity, newCapacity, stats.maxCapacity)
+      functioningBattery(registry, myId, stats.copy(currentCapacity = newCapacity))
 
-    }
+    case (ctx, Discharge(amt)) =>
+      val newCapacity = Math.max(0, stats.currentCapacity - amt)
+      ctx.log.info("Requested {} to deliver {}J - battery capacity is {}J of {}J max", myId, amt, stats.currentCapacity, stats.maxCapacity)
+      if (amt > stats.currentCapacity) {
+        // lacking energy - requesting it from the registry
+        registry ! DeliverEnergyRequest(ctx.self, myId, amt - stats.currentCapacity)
+      }
+      functioningBattery(registry, myId, stats.copy(currentCapacity = newCapacity))
+
   }
 
   def failedBattery(myId: DeviceId, reason: String): Behavior[FailedBatteryState] = Behaviors.receive {

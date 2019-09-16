@@ -1,6 +1,7 @@
 package name.aloise
 
 import akka.actor.typed.ActorSystem
+import name.aloise.actors.RegistryActor.LogStats
 //import akka.cluster.typed.{Cluster, ClusterSingleton}
 import name.aloise.actors.{BatteryStats, DeviceId, RegistryActor}
 import name.aloise.actors.RegistryActor.{AddBattery, ChargeRandom, DischargeRandom, RegistryMessage}
@@ -25,6 +26,9 @@ object RegistryApp extends App {
           println("Charging a random battery")
           system ! ChargeRandom(500)
 
+        case 'l' =>
+          system ! LogStats
+
         case _ =>
       }
     } while (line != "q")
@@ -40,7 +44,7 @@ object RegistryApp extends App {
   }
 
   Console.println("Running the Registry cluster node ...")
-  Console.println("Press <q> to stop, <c> to charge a random battery, <d> to discharge")
+  Console.println("Press <q> to stop, <c> to charge a random battery, <d> to discharge, <l> to show logs")
 
   // Here it blocks! :-<
   commandLineLoop(system)

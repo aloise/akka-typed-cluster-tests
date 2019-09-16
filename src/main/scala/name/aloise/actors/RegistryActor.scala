@@ -30,12 +30,16 @@ object RegistryActor {
 
   final case class AddBattery(id: DeviceId, stats: BatteryStats) extends RegistryMessage
 
+  final case class ConnectBattery(actorRef: ActorRef[FunctioningBatteryState]) extends RegistryMessage
+
   final case class BatteryDeviceJoined(listing: Receptionist.Listing) extends RegistryMessage
 
   // Those are for simulation purposes only
   final case class ChargeRandom(amount: Long) extends RegistryMessage
 
   final case class DischargeRandom(amount: Long) extends RegistryMessage
+
+  final case object LogStats extends RegistryMessage
 
   /**
    * Main Regisrty Behavior
@@ -54,10 +58,10 @@ object RegistryActor {
           ): Behavior[RegistryMessage] = Behaviors.setup { context =>
 
     // subscribe to the processor reference updates we're interested in
-    val listingAdapter: ActorRef[Receptionist.Listing] = context.messageAdapter { listing =>
-      BatteryDeviceJoined(listing)
-    }
-    context.system.receptionist ! Receptionist.Subscribe(BatteryActor.GetBatteryStatsKey, listingAdapter)
+    //    val listingAdapter: ActorRef[Receptionist.Listing] = context.messageAdapter { listing =>
+    //      BatteryDeviceJoined(listing)
+    //    }
+    // context.system.receptionist ! Receptionist.Subscribe(BatteryActor.GetBatteryStatsKey, listingAdapter)
 
     Behaviors.receive {
       case (ctx, DeliverEnergyRequest(to, id, amount)) =>
@@ -111,10 +115,20 @@ object RegistryActor {
       case (_, BatteryDeviceJoined(BatteryActor.GetBatteryStatsKey.Listing(listings))) =>
         main(name, listings, requests, transactionLog)
 
+
       case (ctx, AddBattery(id, stats)) =>
         ctx.log.info("Creating a Battery {} with capacity {}J of {}J", id, stats.currentCapacity, stats.maxCapacity)
-        ctx.spawn(BatteryActor.functioningBattery(ctx.self, id, stats), name = "Battery-" + id.id.toString)
-        Behaviors.same
+        val newActor = ctx.spawnAnonymous(BatteryActor.functioningBattery(ctx.self, id, stats))
+        main(name, batteries + newActor, requests, transactionLog)
+
+      // This message should be received from the cluster receptionist
+      case (ctx, ConnectBattery(actorRef)) =>
+        if (batteries.contains(actorRef)) {
+          Behaviors.same
+        } else {
+          ctx.log.info("Creating a remote Battery {}", actorRef)
+          main(name, batteries + actorRef, requests, transactionLog)
+        }
 
       // Simulation messages
       case (_, ChargeRandom(amt)) =>
@@ -125,6 +139,10 @@ object RegistryActor {
       case (_, DischargeRandom(amt)) =>
         val n = util.Random.nextInt(batteries.size)
         batteries.iterator.drop(n).next() ! Discharge(amt)
+        Behaviors.same
+
+      case (ctx, LogStats) =>
+        ctx.log.info("Registry log : " + transactionLog)
         Behaviors.same
     }
   }
