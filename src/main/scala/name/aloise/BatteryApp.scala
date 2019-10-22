@@ -4,7 +4,6 @@ import java.util.UUID
 
 import akka.actor.typed.ActorSystem
 import akka.cluster.typed.Cluster
-import name.aloise.RegistryApp.system
 import name.aloise.actors.{DeviceId, RegistryActor}
 import name.aloise.actors.RegistryActor.RegistryMessage
 

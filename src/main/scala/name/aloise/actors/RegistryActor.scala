@@ -142,7 +142,9 @@ object RegistryActor {
         Behaviors.same
 
       case (ctx, LogStats) =>
-        ctx.log.info("Registry log : " + transactionLog)
+        ctx.log.info("Registry log : \n" + transactionLog.map { case EnergyTransfer(ts, from, to, amt) =>
+          s"$ts : ${amt}J From ${from.id} To ${to.id}"
+        }.mkString("\n"))
         Behaviors.same
     }
   }

@@ -103,11 +103,15 @@ object BatteryActor {
       }
       functioningBattery(registry, myId, stats.copy(currentCapacity = newCapacity))
 
+    case (_, _) =>
+      Behavior.same
   }
 
   def failedBattery(myId: DeviceId, reason: String): Behavior[FailedBatteryState] = Behaviors.receive {
     case (_, GetFailReason(to)) =>
       to ! FailReason(myId, reason)
+      Behavior.same
+    case (_, _) =>
       Behavior.same
   }
 
